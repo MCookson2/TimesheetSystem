@@ -1,5 +1,12 @@
 # 📄 Timesheet System — Technical Test
 
+## 🚀 Startup
+
+To run this project make sure both the TimesheetSystem.API and TimesheetSystem.Blazor projects are set as startup projects
+
+<img width="927" height="542" alt="image" src="https://github.com/user-attachments/assets/a17d093c-302f-425b-9734-70ae4b56ceea" />
+
+
 ## 💡 Overview
 
 This technical test is designed to assess your coding skills, attention to detail, and problem-solving ability.  
