@@ -1,0 +1,110 @@
+﻿@page "/reports"
+@rendermode InteractiveServer
+@using System.Net.Http.Json
+@using TimesheetSystem.Common.Classes
+@inject HttpClient Http
+
+<h1>Reports</h1>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <label>User ID:</label>
+        <InputNumber class="form-control" @bind-Value="_userId" />
+    </div>
+    <div class="col-md-3">
+        <label>Week of:</label>
+        <InputDate class="form-control" @bind-Value="_selectedDate" />
+    </div>
+    <div class="col-md-3 align-self-end">
+        <button class="btn btn-primary" @onclick="LoadReports">Load Reports</button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Loading reports...</em></p>
+}
+else
+{
+    @if (_entries.Count == 0 && _hoursPerProject.Count == 0)
+    {
+        <p>No report data found for this week.</p>
+    }
+    else
+    {
+        <h3>Timesheet Entries (Week of @_selectedDate.ToShortDateString())</h3>
+
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Date</th>
+                    <th>Project ID</th>
+                    <th>Hours</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in _entries.Values.OrderBy(e => e.Date))
+                {
+                    <tr>
+                        <td>@_userId</td>
+                        <td>@entry.Date.ToShortDateString()</td>
+                        <td>@entry.ProjectID</td>
+                        <td>@entry.HoursWorked</td>
+                        <td>@entry.Description</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <h3>Total Hours Per Project (Week of @_selectedDate.ToShortDateString())</h3>
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Project ID</th>
+                    <th>Total Hours</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var (projectId, hours) in _hoursPerProject)
+                {
+                    <tr>
+                        <td>@_userId</td>
+                        <td>@projectId</td>
+                        <td>@hours</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private bool _loading = false;
+    private int _userId = 1;
+    private DateTime _selectedDate = DateTime.Today;
+    private Dictionary<int, TimesheetEntry> _entries = new();
+    private Dictionary<int, double> _hoursPerProject = new();
+
+    private async Task LoadReports()
+    {
+        _loading = true;
+
+        try
+        {
+            string dateParam = _selectedDate.ToString("yyyy-MM-dd");
+
+            _entries = await Http.GetFromJsonAsync<Dictionary<int, TimesheetEntry>>(
+                $"Timesheet/entries/{_userId}?date={dateParam}") ?? new();
+
+            _hoursPerProject = await Http.GetFromJsonAsync<Dictionary<int, double>>(
+                $"Timesheet/projects/{_userId}?date={dateParam}") ?? new();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

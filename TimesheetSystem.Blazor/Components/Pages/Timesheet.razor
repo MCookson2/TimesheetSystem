@@ -1,0 +1,267 @@
+﻿@page "/"
+@page "/timesheet"
+@using System.Net.Http.Json
+@inject HttpClient Http
+@rendermode InteractiveServer
+
+<h1>Timesheet</h1>
+
+@if (_loading)
+{
+    <p><em>Loading entries...</em></p>
+}
+else if (_entries.Count == 0)
+{
+    <p>No entries found.</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>User ID</th>
+                <th>Date</th>
+                <th>Project ID</th>
+                <th>Hours</th>
+                <th>Description</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (_entries.Count == 0)
+            {
+                <tr>
+                    <td colspan="6" class="text-center">
+                        <em>No entries found.</em>
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var (key, value) in _entries)
+                {
+                    if (_editEntryId == key)
+                    {
+                        <tr>
+                            <td><InputNumber class="form-control" @bind-Value="value.UserID" /></td>
+                            <td><InputDate class="form-control" @bind-Value="value.Date" /></td>
+                            <td><InputNumber class="form-control" @bind-Value="value.ProjectID" /></td>
+                            <td><InputNumber class="form-control" @bind-Value="value.HoursWorked" /></td>
+                            <td><InputText class="form-control" @bind-Value="value.Description" /></td>
+                            <td>
+                                <button class="btn btn-sm btn-success me-1" @onclick="() => SaveEdit(key, value)">Save</button>
+                                <button class="btn btn-sm btn-secondary" @onclick="CancelEdit">Cancel</button>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr>
+                            <td>@value.UserID</td>
+                            <td>@value.Date.ToShortDateString()</td>
+                            <td>@value.ProjectID</td>
+                            <td>@value.HoursWorked</td>
+                            <td>@value.Description</td>
+                            <td>
+                                <button class="btn btn-sm btn-primary me-1" @onclick="() => StartEdit(key)">Edit</button>
+                                <button class="btn btn-sm btn-danger" @onclick="() => DeleteEntry(key)">Delete</button>
+                            </td>
+                        </tr>
+                    }
+                }
+            }
+        </tbody>
+    </table>
+
+    <!-- Pagination Controls -->
+    @if (_totalCount > _limit)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <button class="btn btn-secondary"
+            @onclick="PrevPage"
+            disabled="@(_offset <= 0)">
+                Previous
+            </button>
+
+            <span>
+                Page @((_offset / _limit) + 1)
+                of @Math.Ceiling(_totalCount / (double)_limit)
+            </span>
+
+            <button class="btn btn-secondary"
+            @onclick="NextPage"
+            disabled="@(_offset + _limit >= _totalCount)">
+                Next
+            </button>
+        </div>
+    }
+}
+
+<hr />
+
+@if (!string.IsNullOrEmpty(_statusMessage))
+{
+    <div class="@_statusCss mt-2">
+        @_statusMessage
+    </div>
+}
+
+<h3>Add Entry</h3>
+<EditForm Model="@_newEntry" OnSubmit="AddEntry" FormName="AddTimesheetEntryForm">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+    <div class="mb-2">
+        <label>User ID:</label>
+        <InputNumber class="form-control" @bind-Value="_newEntry.UserID" />
+    </div>
+    <div class="mb-2">
+        <label>Date:</label>
+        <InputDate class="form-control" @bind-Value="_newEntry.Date" />
+    </div>
+    <div class="mb-2">
+        <label>Project ID:</label>
+        <InputNumber class="form-control" @bind-Value="_newEntry.ProjectID" />
+    </div>
+    <div class="mb-2">
+        <label>Hours:</label>
+        <InputNumber class="form-control" @bind-Value="_newEntry.HoursWorked" />
+    </div>
+    <div class="mb-2">
+        <label>Description:</label>
+        <InputText class="form-control" @bind-Value="_newEntry.Description" />
+    </div>
+    <button class="btn btn-primary" type="submit">Add</button>
+</EditForm>
+
+@code {
+    private bool _loading = true;
+    private Dictionary<int, TimesheetEntry> _entries = new();
+    private TimesheetEntry _newEntry;
+    private int? _editEntryId = null;
+
+    private int _offset = 0;
+    private int _limit = 5;
+    private int _totalCount = 0;
+    private int _totalPages => (int)Math.Ceiling(_totalCount / (double)_limit);
+
+    private string? _statusMessage;
+    private string? _statusCss;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _newEntry = new TimesheetEntry { Date = DateTime.Today };
+        await LoadEntries();
+    }
+
+    private async Task LoadEntries()
+    {
+        try
+        {
+            _loading = true;
+            var result = await Http.GetFromJsonAsync<PagedTimesheetEntries>($"Timesheet?offset={_offset}&limit={_limit}");
+
+            if (result != null)
+            {
+                _entries = result.Entries.ToDictionary();
+                _totalCount = result.TotalCount;
+
+                if (_offset >= _totalCount && _offset > 0)
+                {
+                    _offset = Math.Max(0, _offset - _limit);
+                    result = await Http.GetFromJsonAsync<PagedTimesheetEntries>( $"Timesheet?offset={_offset}&limit={_limit}");
+                    _entries = result.Entries.ToDictionary();
+                    _totalCount = result?.TotalCount ?? 0;
+                }
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task AddEntry(EditContext context)
+    {
+        HttpResponseMessage response = await Http.PostAsJsonAsync("Timesheet", _newEntry);
+        bool success = await response.Content.ReadFromJsonAsync<bool>();
+
+        if (response.IsSuccessStatusCode && success)
+        {
+            _statusMessage = "Entry added successfully.";
+            _statusCss = "alert alert-success";
+            await LoadEntries();
+
+            _newEntry = new TimesheetEntry { Date = DateTime.Today };
+        }
+        else if (response.IsSuccessStatusCode && !success)
+        {
+            _statusMessage = "Duplicate entry detected. You already logged this user/project/date.";
+            _statusCss = "alert alert-warning";
+        }
+        else
+        {
+            _statusMessage = "An error occurred while adding the entry.";
+            _statusCss = "alert alert-danger";
+        }
+    }
+
+
+    private void StartEdit(int id)
+    {
+        _editEntryId = id;
+    }
+
+    private void CancelEdit()
+    {
+        _editEntryId = null;
+        StateHasChanged();
+    }
+
+    private async Task SaveEdit(int id, TimesheetEntry entry)
+    {
+        var response = await Http.PutAsJsonAsync($"Timesheet?id={id}", entry);
+        bool success = await response.Content.ReadFromJsonAsync<bool>();
+
+        if (response.IsSuccessStatusCode && success)
+        {
+            _statusMessage = "Entry updated successfully.";
+            _statusCss = "alert alert-success";
+            _editEntryId = null;
+            await LoadEntries();
+        }
+        else if (response.IsSuccessStatusCode && !success)
+        {
+            _statusMessage = "Duplicate entry detected. No changes were saved.";
+            _statusCss = "alert alert-warning";
+        }
+        else
+        {
+            _statusMessage = "An error occurred while updating the entry.";
+            _statusCss = "alert alert-danger";
+        }
+    }
+
+    private async Task DeleteEntry(int id)
+    {
+        await Http.DeleteAsync($"Timesheet?id={id}");
+        await LoadEntries();
+    }
+
+    private async Task NextPage()
+    {
+        if (_offset + _limit < _totalCount)
+        {
+            _offset += _limit;
+            await LoadEntries();
+        }
+    }
+
+    private async Task PrevPage()
+    {
+        if (_offset > 0)
+        {
+            _offset -= _limit;
+            await LoadEntries();
+        }
+    }
+}
